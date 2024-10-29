@@ -18,6 +18,24 @@ recognition.addEventListener('result', (e) => {
 const socket = io();
 socket.emit('chat message', text);
 
+//takes a string and enables browser to speak w/ text
+//create reference to api entry point
+//create speech synthesis using its constructor to text to be synthesized when word or sound is spoken
+//https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisUtterance
+//we can set the voice 
+
+function synthVoice(text) {
+    const synth = window.speechSynthesis;
+    const utterance = new SpeechSynthesisUtterance();
+    utterance.text = text;
+    synth.speak(utterance);
+  }
+  
+socket.on('bot reply', function(replyText) {
+    synthVoice(replyText);
+}); 
+  
+  
 
 
 
