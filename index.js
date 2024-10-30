@@ -1,57 +1,61 @@
-'use strict';
-
-require('dotenv').config()
-const APIAI_TOKEN = process.env.APIAI_TOKEN;
-//const APIAI_SESSION_ID = process.env.APIAI_SESSION_ID;
-
-
-const uuid = require('uuid'); // You may need to install this package
-const APIAI_SESSION_ID = uuid.v4(); // Generates a new unique session ID
-
+require('dotenv').config(); // Load environment variables
+const dialogflow = require('@google-cloud/dialogflow');
+const uuid = require('uuid');
 const express = require('express');
 const app = express();
+const io = require('socket.io');
 
-app.use(express.static(__dirname + '/views')); // html
-app.use(express.static(__dirname + '/public')); // js, css, images
+// Initialize Dialogflow client
+const sessionClient = new dialogflow.SessionsClient();
+const projectId = process.env.GCLOUD_PROJECT_ID;
 
+// Serve static files
+app.use(express.static(__dirname + '/views'));
+app.use(express.static(__dirname + '/public'));
+
+// Start the server
 const server = app.listen(process.env.PORT || 5000, () => {
-  console.log('Server listening on port %d in %s mode', server.address().port, app.settings.env);
+  console.log(
+    'Server listening on port %d in %s mode',
+    server.address().port,
+    app.settings.env
+  );
 });
 
-const io = require('socket.io')(server);
-io.on('connection', function(socket){
-  console.log('a user connected');
-});
+// Initialize WebSocket
+io(server).on('connection', (socket) => {
+  console.log('A user connected');
 
-const apiai = require('apiai')(APIAI_TOKEN);
+  socket.on('chat message', async (text) => {
+    console.log('Message:', text);
+    const sessionId = uuid.v4();
+    // PROBLEM: 
+    const sessionPath = sessionClient.projectAgentSessionPath(projectId, sessionId);
+    console.log("Session Path: ", sessionPath);
+    try {
+      const request = {
+        session: sessionPath,
+        queryInput: {
+          text: {
+            text: text,
+            languageCode: 'en-US',
+          },
+        },
+      };
 
-// Web UI
-app.get('/', (req, res) => {
-  res.sendFile('index.html');
-});
+      const [response] = await sessionClient.detectIntent(request);
+      const aiText = response.queryResult.fulfillmentText || '(No response)';
 
-
-io.on('connection', function(socket) {
-  socket.on('chat message', (text) => {
-    console.log('Message: ' + text);
-
-    // Get a reply from API.ai
-
-    let apiaiReq = apiai.textRequest(text, {
-      sessionId: APIAI_SESSION_ID
-    });
-
-    apiaiReq.on('response', (response) => {
-      let aiText = response.result.fulfillment.speech;
-      console.log('Bot reply: ' + aiText);
+      console.log('Bot reply:', aiText);
       socket.emit('bot reply', aiText);
-    });
-
-    apiaiReq.on('error', (error) => {
-      console.log(error);
-    });
-
-    apiaiReq.end();
-
+    } catch (error) {
+      console.error('ERROR:', error);
+      socket.emit('bot reply', 'There was an error processing your message.');
+    }
   });
+});
+
+// Serve the main HTML page
+app.get('/', (req, res) => {
+  res.sendFile('index.html', { root: __dirname + '/views' });
 });
